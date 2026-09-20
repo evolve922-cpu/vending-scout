@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Vending Scout</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css'">
+<style>
+:root{
+  --fog:#EEF2F3; --paper:#FFFFFF; --ink:#12232B; --muted:#54696F; --line:#D5DEE1;
+  --teal:#0E6E7E; --teal-dark:#0A5562; --coin:#E8A317; --rust:#B4400E; --slate:#8FA0A8;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  font-family:"Schibsted Grotesk",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  background:var(--fog); color:var(--ink); font-size:16px; line-height:1.45;
+}
+:focus-visible{outline:3px solid var(--teal-dark); outline-offset:2px}
+
+.app{
+  display:grid; grid-template-columns:1fr;
+  grid-template-areas:"controls" "map" "results";
+}
+.controls{grid-area:controls; padding:20px 16px 16px; background:var(--paper); border-bottom:1px solid var(--line)}
+.mapwrap{grid-area:map; position:relative; height:46vh; min-height:280px; background:#dfe7ea}
+#map{position:absolute; inset:0}
+.results{grid-area:results; min-height:0}
+
+h1{margin:0 0 4px; font-size:28px; line-height:1.1; font-weight:800; letter-spacing:-.02em}
+.lede{margin:0 0 16px; color:var(--muted); font-size:15px}
+
+.field{display:flex; gap:8px; margin-bottom:12px}
+input[type=search]{
+  flex:1; min-width:0; height:48px; padding:0 14px; font:inherit; color:var(--ink);
+  background:var(--paper); border:1.5px solid var(--slate); border-radius:10px;
+}
+input[type=search]::placeholder{color:#7A8D94}
+.btn{
+  height:48px; padding:0 18px; font:inherit; font-weight:700; border-radius:10px; cursor:pointer;
+  border:1.5px solid var(--teal); background:var(--teal); color:#fff;
+}
+.btn:hover{background:var(--teal-dark); border-color:var(--teal-dark)}
+.btn[disabled]{opacity:.6; cursor:progress}
+.btn.ghost{background:var(--paper); color:var(--teal-dark)}
+.btn.ghost:hover{background:#EAF4F6}
+.btn.wide{width:100%}
+
+fieldset.radius{border:0; padding:0; margin:0 0 14px}
+fieldset.radius legend{padding:0; margin-bottom:6px; font-size:14px; font-weight:600; color:var(--muted)}
+.segs{display:flex; border:1.5px solid var(--slate); border-radius:10px; overflow:hidden}
+.segs label{flex:1; position:relative}
+.segs input{position:absolute; opacity:0; inset:0; cursor:pointer}
+.segs span{display:block; text-align:center; padding:11px 0; font-weight:600; font-size:15px; border-left:1px solid var(--line)}
+.segs label:first-child span{border-left:0}
+.segs input:checked + span{background:var(--teal); color:#fff}
+.segs input:focus-visible + span{outline:3px solid var(--teal-dark); outline-offset:-3px}
+
+.status{min-height:22px; margin:10px 0 0; font-size:14px; color:var(--muted)}
+.status.err{color:var(--rust); font-weight:600}
+
+.legend{
+  position:absolute; z-index:1000; left:10px; bottom:26px; background:var(--paper);
+  border-radius:8px; padding:8px 10px; font-size:13px; line-height:1.6; box-shadow:0 1px 4px rgba(0,0,0,.25);
+}
+.legend i{display:inline-block; width:11px; height:11px; border-radius:50%; margin-right:7px; vertical-align:-1px}
+
+.toolbar{position:sticky; top:0; z-index:5; background:var(--fog); padding:14px 16px 10px; border-bottom:1px solid var(--line)}
+.tabs{display:flex; gap:8px; margin-bottom:10px}
+.tab{
+  flex:1; height:44px; font:inherit; font-weight:700; cursor:pointer; border-radius:10px;
+  border:1.5px solid var(--slate); background:transparent; color:var(--ink);
+}
+.tab[aria-pressed="true"]{background:var(--ink); border-color:var(--ink); color:#fff}
+.chips{display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; margin-bottom:8px}
+.chip{
+  flex:none; height:36px; padding:0 14px; font:inherit; font-size:14px; font-weight:600; cursor:pointer;
+  border-radius:18px; border:1.5px solid var(--teal); background:var(--paper); color:var(--teal-dark);
+}
+.chip[aria-pressed="false"]{border-color:var(--line); background:transparent; color:var(--muted); text-decoration:line-through}
+
+.card{
+  display:grid; grid-template-columns:28px 1fr auto; gap:12px; padding:16px;
+  background:var(--paper); border-bottom:1px solid var(--line); border-left:4px solid transparent; cursor:pointer;
+}
+.card.active{border-left-color:var(--teal); background:#F3FAFB}
+.rank{font-size:20px; font-weight:800; color:var(--slate); font-variant-numeric:tabular-nums; line-height:1.2}
+.name{margin:0; font-size:17px; font-weight:700; line-height:1.25}
+.cat{margin:2px 0 0; font-size:14px; font-weight:600; color:var(--teal-dark)}
+.addr{margin:2px 0 0; font-size:14px; color:var(--muted)}
+.stats{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:12px 0 0}
+.stats dt{font-size:12px; color:var(--muted); line-height:1.25}
+.stats dd{margin:2px 0 0; font-size:15px; font-weight:700; font-variant-numeric:tabular-nums}
+.note{margin:12px 0 0; padding:2px 0 2px 10px; border-left:3px solid var(--coin); font-size:13px; color:var(--muted)}
+.actions{display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; margin-top:12px}
+.actions a{color:var(--teal-dark); font-weight:600; font-size:15px; padding:8px 0}
+.star{
+  margin-left:auto; height:40px; padding:0 14px; font:inherit; font-size:14px; font-weight:700; cursor:pointer;
+  border-radius:8px; border:1.5px solid var(--teal); background:var(--paper); color:var(--teal-dark);
+}
+.star[aria-pressed="true"]{background:var(--teal); color:#fff}
+
+.tag{
+  align-self:start; min-width:54px; padding:7px 16px 7px 10px; text-align:center;
+  font-weight:800; font-size:17px; font-variant-numeric:tabular-nums;
+  clip-path:polygon(0 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 0 100%);
+}
+.tag.high{background:var(--teal); color:#fff}
+.tag.mid{background:var(--coin); color:var(--ink)}
+.tag.low{background:#DCE4E7; color:var(--ink)}
+
+.empty{margin:0; padding:28px 16px; color:var(--muted); background:var(--paper)}
+.exportbar{padding:14px 16px; background:var(--fog)}
+details.how{margin:0; padding:16px; font-size:14px; color:var(--muted)}
+details.how summary{cursor:pointer; font-weight:700; color:var(--ink); padding:6px 0}
+details.how p{margin:8px 0 0; max-width:60ch}
+.pop strong{font-weight:700}
+
+@media (min-width:960px){
+  .app{
+    height:100vh; grid-template-columns:440px minmax(0,1fr); grid-template-rows:auto minmax(0,1fr);
+    grid-template-areas:"controls map" "results map";
+  }
+  .mapwrap{height:auto}
+  .results{overflow:auto}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="controls">
+    <h1>Vending Scout</h1>
+    <p class="lede">Scan an area, rank the spots, shortlist the ones worth a pitch.</p>
+
+    <div class="field">
+      <input id="area" type="search" placeholder="Neighbourhood or city" aria-label="Neighbourhood or city" autocomplete="off" enterkeyhint="search">
+      <button id="locate" type="button" class="btn ghost">Use my location</button>
+    </div>
+
+    <fieldset class="radius">
+      <legend>Search radius</legend>
+      <div class="segs">
+        <label><input type="radio" name="radius" value="1000"><span>1 km</span></label>
+        <label><input type="radio" name="radius" value="2000"><span>2 km</span></label>
+        <label><input type="radio" name="radius" value="3000" checked><span>3 km</span></label>
+        <label><input type="radio" name="radius" value="5000"><span>5 km</span></label>
+        <label><input type="radio" name="radius" value="10000"><span>10 km</span></label>
+      </div>
+    </fieldset>
+
+    <button id="scan" type="button" class="btn wide">Scan area</button>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+  </header>
+
+  <div class="mapwrap">
+    <div id="map"></div>
+    <div class="legend" aria-hidden="true">
+      <div><i style="background:#0E6E7E"></i>70 and up</div>
+      <div><i style="background:#E8A317"></i>50 to 69</div>
+      <div><i style="background:#8FA0A8"></i>Under 50</div>
+    </div>
+  </div>
+
+  <section class="results" aria-label="Results">
+    <div class="toolbar">
+      <div class="tabs">
+        <button id="tab-results" type="button" class="tab" aria-pressed="true">Results</button>
+        <button id="tab-shortlist" type="button" class="tab" aria-pressed="false">Shortlist</button>
+      </div>
+      <div id="chips" class="chips"></div>
+    </div>
+    <div id="list"></div>
+    <div class="exportbar"><button id="export" type="button" class="btn ghost wide" disabled>Download results (CSV)</button></div>
+    <details class="how">
+      <summary>How scores work</summary>
+      <p>Scores run from 0 to 100. They combine the type of place (hospitals, gyms, apartments and colleges rank highest), building size when it's listed, weekly opening hours, and how many other busy sites sit within 500 m. Points come off for convenience stores, cafes, supermarkets and vending machines within 150 m.</p>
+      <p>The data comes from OpenStreetMap, which has no visitor counts or reviews, and many places are missing hours or contact details. Use the ranking as a shortlist and check each site in person.</p>
+      <p>Map data &copy; OpenStreetMap contributors. Your shortlist is saved on this device only.</p>
+    </details>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>if(!window.L){document.write('<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"><\/script>');}</script>
+<script>
+"use strict";
+const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
+const DAYS = ["Mo","Tu","We","Th","Fr","Sa","Su"];
+
+// label, OSM matchers, weight, mailer type, note
+const CATEGORIES = [
+  {label:"Apartments/condos", m:[["building",["apartments"]]], w:.90, type:"residential", note:"Captive audience. Pitch the property manager."},
+  {label:"Gyms/sports", m:[["leisure",["fitness_centre","sports_centre"]]], w:.90, type:"fitness", note:""},
+  {label:"Hospitals", m:[["amenity",["hospital"]]], w:1.00, type:"workplace", note:"Usually exclusive or tendered contracts."},
+  {label:"Transit hubs", m:[["railway",["station"]],["amenity",["bus_station"]]], w:.85, type:"workplace", note:"The transit agency controls the space, so expect a slower deal."},
+  {label:"Colleges", m:[["amenity",["college","university"]]], w:.90, type:"workplace", note:""},
+  {label:"Warehouses/industrial", m:[["building",["warehouse","industrial"]]], w:.80, type:"workplace", note:"Shift workers make this a good fit for 24-hour machines."},
+  {label:"Offices", m:[["building",["office"]]], w:.70, type:"workplace", note:""},
+  {label:"Community/rec centres", m:[["amenity",["community_centre"]],["leisure",["ice_rink"]]], w:.85, type:"fitness", note:"Likely a municipal contract handled through procurement."},
+  {label:"Hotels", m:[["tourism",["hotel"]]], w:.60, type:"workplace", note:""},
+  {label:"Shopping malls", m:[["shop",["mall"]]], w:.70, type:"workplace", note:""},
+  {label:"Car dealerships", m:[["shop",["car"]]], w:.50, type:"workplace", note:"Waiting-room traffic."},
+  {label:"Schools", m:[["amenity",["school"]]], w:.30, type:"workplace", note:"Ontario school nutrition rules limit what you can stock."}
+];
+const COMPETITORS = [["shop",["convenience","supermarket"]],["amenity",["cafe","vending_machine"]]];
+
+function hav(aLat,aLng,bLat,bLng){
+  const R=6371000, p1=aLat*Math.PI/180, p2=bLat*Math.PI/180;
+  const dp=p2-p1, dl=(bLng-aLng)*Math.PI/180;
+  const h=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+function selector(key,values){return `["${key}"~"^(${values.join("|")})$"]`;}
+function buildQuery(lat,lng,radius){
+  const around=`(around:${radius},${lat},${lng})`;
+  const parts=[];
+  for(const c of CATEGORIES) for(const [k,v] of c.m) parts.push(`nwr${selector(k,v)}${around};`);
+  for(const [k,v] of COMPETITORS) parts.push(`nwr${selector(k,v)}${around};`);
+  return `[out:json][timeout:90];(${parts.join("")});out center tags;`;
+}
+function coords(el){
+  if(el.lat!=null) return [el.lat,el.lon];
+  if(el.center) return [el.center.lat,el.center.lon];
+  return [null,null];
+}
+function expandDays(text){
+  text=text.replace(/off/g,"").trim();
+  if(!text) return DAYS.slice();
+  const out=[];
+  for(let part of text.split(",")){
+    part=part.trim();
+    if(part.includes("-")){
+      const [a,b]=part.split("-",2).map(x=>x.trim().slice(0,2));
+      if(DAYS.includes(a)&&DAYS.includes(b)){
+        const i=DAYS.indexOf(a), j=DAYS.indexOf(b), end=j>=i?j:j+7;
+        for(let k=i;k<=end;k++) out.push(DAYS[k%7]);
+      }
+    } else if(DAYS.includes(part.slice(0,2))) out.push(part.slice(0,2));
+  }
+  return out;
+}
+function parseHours(s){
+  if(!s) return null;
+  if(s.includes("24/7")) return 168;
+  try{
+    const week=Object.fromEntries(DAYS.map(d=>[d,0]));
+    for(let rule of s.split(";")){
+      rule=rule.trim(); if(!rule) continue;
+      let hrs=0;
+      for(const m of rule.matchAll(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/g)){
+        const a=+m[1]+ +m[2]/60, b=+m[3]+ +m[4]/60;
+        hrs+=((((b-a)%24)+24)%24)||24;
+      }
+      const first=rule.search(/\d/);
+      for(const d of expandDays(first>=0?rule.slice(0,first):rule)) week[d]=hrs;
+    }
+    const total=Object.values(week).reduce((x,y)=>x+y,0);
+    return total>0?total:null;
+  }catch(e){return null;}
+}
+function sizeScore(tags){
+  const vals=[];
+  for(const [k,div] of [["building:levels",15],["capacity",1000],["rooms",300],["beds",500],["building:flats",200]]){
+    const v=parseFloat(String(tags[k]||"").split(";")[0]);
+    if(v) vals.push(v/div);
+  }
+  return vals.length?Math.min(Math.max(...vals),1):0.4;
+}
+function matches(tags,matchers){return matchers.some(([k,vals])=>vals.includes(tags[k]));}
+function displayName(tags,label){
+  const n=tags.name||tags.operator||tags.brand;
+  if(n) return n;
+  if(label.startsWith("Apartments")&&tags["addr:street"])
+    return `${tags["addr:housenumber"]||""} ${tags["addr:street"]} (apartments)`.trim();
+  return null;
+}
+function collect(elements){
+  const found=new Map(), rivals=new Map();
+  for(const el of elements){
+    const tags=el.tags||{}, [lat,lng]=coords(el);
+    if(lat==null) continue;
+    const uid=el.type+el.id;
+    if(matches(tags,COMPETITORS)) rivals.set(uid,[lat,lng]);
+    for(const c of CATEGORIES){
+      if(!matches(tags,c.m)) continue;
+      const name=displayName(tags,c.label);
+      if(!name) continue;
+      if(c.label.startsWith("Apartments")){
+        const lv=parseFloat(String(tags["building:levels"]||"0").split(";")[0])||0;
+        if(!tags.name&&lv<4) continue;
+      }
+      const prev=found.get(uid);
+      if(prev&&prev.w>=c.w) continue;
+      found.set(uid,{
+        id:uid, name, lat, lng, category:c.label, w:c.w, type:c.type, note:c.note,
+        address:[tags["addr:housenumber"],tags["addr:street"],tags["addr:city"]].filter(Boolean).join(" "),
+        hours:parseHours(tags.opening_hours), size:sizeScore(tags),
+        website:tags.website||tags["contact:website"]||"", phone:tags.phone||tags["contact:phone"]||""
+      });
+    }
+  }
+  return {places:[...found.values()], rivals};
+}
+function scoreAll(places,rivals){
+  for(const p of places){
+    const hs=p.hours==null?0.5:Math.min(p.hours/100,1);
+    let busy=0; for(const q of places) if(q.id!==p.id&&hav(p.lat,p.lng,q.lat,q.lng)<=500) busy++;
+    let riv=0; for(const [id,[a,b]] of rivals) if(id!==p.id&&hav(p.lat,p.lng,a,b)<=150) riv++;
+    p.busy=busy; p.rivals=riv;
+    const raw=.40*p.w+.20*p.size+.15*hs+.25*Math.min(busy/10,1);
+    p.score=Math.round(Math.max(raw*100-Math.min(riv*5,15),0)*10)/10;
+  }
+}
+function tier(s){return s>=70?"high":s>=50?"mid":"low";}
+
+// ---- UI ----
+const $=s=>document.querySelector(s);
+const COLORS={high:"#0E6E7E",mid:"#E8A317",low:"#8FA0A8"};
+const STORE="vendingScout.shortlist.v1";
+const state={places:[],view:"results",hidden:new Set(),shortlist:loadShortlist(),geo:null,center:null,ring:null,markers:new Map()};
+
+function loadShortlist(){try{return JSON.parse(localStorage.getItem(STORE)||"{}");}catch(e){return {};}}
+function saveShortlist(){try{localStorage.setItem(STORE,JSON.stringify(state.shortlist));}catch(e){}}
+
+function h(tag,props,...kids){
+  const e=document.createElement(tag);
+  for(const [k,v] of Object.entries(props||{})){
+    if(k==="class") e.className=v;
+    else if(k.startsWith("on")) e.addEventListener(k.slice(2),v);
+    else if(v!=null&&v!==false) e.setAttribute(k,v===true?"":v);
+  }
+  for(const c of kids.flat()){
+    if(c==null||c===false) continue;
+    e.append(c.nodeType?c:document.createTextNode(String(c)));
+  }
+  return e;
+}
+function safeUrl(u){
+  if(!u) return ""; let s=String(u).trim();
+  if(!/^https?:\/\//i.test(s)) s="https://"+s;
+  try{const x=new URL(s); return /^https?:$/.test(x.protocol)?x.href:"";}catch(e){return "";}
+}
+function safeTel(t){return String(t||"").split(/[;,]/)[0].replace(/[^\d+]/g,"").slice(0,20);}
+
+function status(msg,isErr){const el=$("#status"); el.textContent=msg; el.className="status"+(isErr?" err":"");}
+function setBusy(b){const btn=$("#scan"); btn.disabled=b; btn.textContent=b?"Scanning...":"Scan area";}
+
+if(!window.L){status("The map library didn't load. Check your connection and reload.",true);}
+const map=L.map("map").setView([43.6,-79.65],10);
+let tileErrors=0, usingBackup=false, tilesLoaded=false;
+const osmTiles=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap contributors"}).addTo(map);
+osmTiles.on("tileload",()=>{tilesLoaded=true;});
+osmTiles.on("tileerror",()=>{
+  if(usingBackup||++tileErrors<4) return;
+  usingBackup=true; map.removeLayer(osmTiles);
+  const backup=L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",{maxZoom:19,subdomains:"abcd",attribution:"&copy; OpenStreetMap contributors &copy; CARTO"}).addTo(map);
+  backup.on("tileload",()=>{tilesLoaded=true;});
+});
+setTimeout(()=>{if(!tilesLoaded) status("The map background didn't load. Your network or hosting site may be blocking map tiles.",true);},12000);
+const layer=L.layerGroup().addTo(map);
+setTimeout(()=>map.invalidateSize(),0);
+window.addEventListener("resize",()=>map.invalidateSize());
+
+async function geocode(q){
+  const r=await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q="+encodeURIComponent(q));
+  if(!r.ok) throw new Error("The area lookup failed. Try again in a moment.");
+  const j=await r.json();
+  if(!j.length) throw new Error("Couldn't find that area. Add the city, for example Meadowvale, Mississauga.");
+  return {lat:+j[0].lat,lng:+j[0].lon};
+}
+async function overpass(query){
+  for(const url of OVERPASS){
+    try{
+      const r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
+        body:"data="+encodeURIComponent(query),
+        signal:AbortSignal.timeout?AbortSignal.timeout(120000):undefined});
+      if(r.ok){const j=await r.json(); return j.elements||[];}
+    }catch(e){}
+  }
+  throw new Error("The free OpenStreetMap servers are busy. Wait a few minutes or try a smaller radius.");
+}
+
+function pool(){
+  return state.view==="results"?state.places:Object.values(state.shortlist).sort((a,b)=>b.score-a.score);
+}
+function visible(){return pool().filter(p=>!state.hidden.has(p.category));}
+
+function stat(label,value){return h("div",null,h("dt",null,label),h("dd",null,value));}
+function card(p,rank){
+  const on=!!state.shortlist[p.id];
+  const links=[];
+  const site=safeUrl(p.website); if(site) links.push(h("a",{href:site,target:"_blank",rel:"noopener"},"Website"));
+  const tel=safeTel(p.phone); if(tel) links.push(h("a",{href:"tel:"+tel},"Call"));
+  return h("article",{class:"card",id:"c-"+p.id,onclick:e=>{if(!e.target.closest("a,button")) focusOn(p.id);}},
+    h("div",{class:"rank","aria-hidden":"true"},rank),
+    h("div",{class:"main"},
+      h("h3",{class:"name"},p.name),
+      h("p",{class:"cat"},p.category),
+      p.address?h("p",{class:"addr"},p.address):null,
+      h("dl",{class:"stats"},
+        stat("Weekly hours",p.hours==null?"Not listed":Math.round(p.hours)),
+        stat("Busy sites nearby",p.busy),
+        stat("Competitors close by",p.rivals)),
+      p.note?h("p",{class:"note"},p.note):null,
+      h("div",{class:"actions"},...links,
+        h("button",{type:"button",class:"star","aria-pressed":String(on),onclick:()=>toggleShortlist(p)},on?"On shortlist":"Add to shortlist"))
+    ),
+    h("div",{class:"tag "+tier(p.score),"aria-label":"Score "+p.score+" out of 100"},p.score)
+  );
+}
+function emptyMessage(){
+  if(state.view==="shortlist") return "Nothing shortlisted yet. Tap Add to shortlist on any result and it will be saved on this device.";
+  if(!state.places.length) return "Enter a neighbourhood or tap Use my location, then scan. A scan takes 10 to 60 seconds.";
+  return "Every category is hidden. Turn a category back on above.";
+}
+function renderTabs(){
+  $("#tab-results").textContent="Results ("+state.places.length+")";
+  $("#tab-shortlist").textContent="Shortlist ("+Object.keys(state.shortlist).length+")";
+  $("#tab-results").setAttribute("aria-pressed",String(state.view==="results"));
+  $("#tab-shortlist").setAttribute("aria-pressed",String(state.view==="shortlist"));
+}
+function renderChips(){
+  const counts=new Map();
+  pool().forEach(p=>counts.set(p.category,(counts.get(p.category)||0)+1));
+  const box=$("#chips"); box.replaceChildren();
+  [...counts.entries()].sort((a,b)=>b[1]-a[1]).forEach(([cat,n])=>{
+    const shown=!state.hidden.has(cat);
+    box.append(h("button",{type:"button",class:"chip","aria-pressed":String(shown),
+      onclick:()=>{shown?state.hidden.add(cat):state.hidden.delete(cat); render(true);}},cat+" ("+n+")"));
+  });
+}
+function renderList(items){
+  const box=$("#list"); box.replaceChildren();
+  if(!items.length){box.append(h("p",{class:"empty"},emptyMessage())); return;}
+  items.forEach((p,i)=>box.append(card(p,i+1)));
+}
+function renderMarkers(items,fit){
+  layer.clearLayers(); state.markers=new Map();
+  const pts=[];
+  items.forEach((p,i)=>{
+    const m=L.circleMarker([p.lat,p.lng],{radius:7+p.score/12,color:"#fff",weight:1.5,fillColor:COLORS[tier(p.score)],fillOpacity:.95});
+    m.bindPopup(h("div",{class:"pop"},h("strong",null,(i+1)+". "+p.name),h("br"),p.category+", score "+p.score));
+    m.on("click",()=>highlight(p.id));
+    m.addTo(layer); state.markers.set(p.id,m); pts.push([p.lat,p.lng]);
+  });
+  if(fit&&pts.length) map.fitBounds(pts,{padding:[30,30],maxZoom:16});
+}
+function renderExport(items){
+  const b=$("#export");
+  b.disabled=!items.length;
+  b.textContent=state.view==="results"?"Download results (CSV)":"Download shortlist for the mailer (CSV)";
+}
+function render(fit){
+  const items=visible();
+  renderTabs(); renderChips(); renderList(items); renderMarkers(items,fit); renderExport(items);
+}
+function highlight(id){
+  document.querySelectorAll(".card.active").forEach(c=>c.classList.remove("active"));
+  const c=document.getElementById("c-"+id);
+  if(c){c.classList.add("active"); c.scrollIntoView({block:"nearest"});}
+}
+function focusOn(id){
+  const m=state.markers.get(id); if(!m) return;
+  highlight(id);
+  map.setView(m.getLatLng(),Math.max(map.getZoom(),15));
+  m.openPopup();
+  if(window.innerWidth<960) $(".mapwrap").scrollIntoView({block:"nearest"});
+}
+function toggleShortlist(p){
+  if(state.shortlist[p.id]) delete state.shortlist[p.id]; else state.shortlist[p.id]=p;
+  saveShortlist(); render(false);
+}
+function drawRadius(c,radius){
+  if(state.ring) state.ring.remove();
+  state.ring=L.circle([c.lat,c.lng],{radius,color:COLORS.high,weight:1.5,dashArray:"4 6",fill:false}).addTo(map);
+  map.fitBounds(state.ring.getBounds());
+}
+
+async function scan(){
+  try{
+    setBusy(true);
+    let c=state.geo;
+    if(!c){
+      const q=$("#area").value.trim();
+      if(!q) throw new Error("Enter a neighbourhood or city, or tap Use my location.");
+      status("Finding the area..."); c=await geocode(q);
+    }
+    const radius=+document.querySelector('input[name="radius"]:checked').value;
+    status("Pulling map data. This can take up to a minute...");
+    const {places,rivals}=collect(await overpass(buildQuery(c.lat,c.lng,radius)));
+    scoreAll(places,rivals);
+    places.sort((a,b)=>b.score-a.score);
+    state.places=places; state.center=c; state.view="results"; state.hidden=new Set();
+    drawRadius(c,radius); render(false);
+    status(places.length?`Found ${places.length} sites within ${radius/1000} km, ranked best first.`
+                        :"No sites found. Try a larger radius or a different area.");
+  }catch(e){
+    status(e.message||"Something went wrong. Try again.",true);
+  }finally{setBusy(false);}
+}
+
+function csvCell(v){const s=v==null?"":String(v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+function toCSV(rows,cols){return [cols.join(",")].concat(rows.map(r=>cols.map(c=>csvCell(r[c])).join(","))).join("\n");}
+function download(name,text){
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([text],{type:"text/csv"})); a.download=name;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+
+$("#scan").addEventListener("click",scan);
+$("#area").addEventListener("keydown",e=>{if(e.key==="Enter") scan();});
+$("#area").addEventListener("input",()=>{state.geo=null;});
+$("#locate").addEventListener("click",()=>{
+  if(!navigator.geolocation){status("Location isn't available in this browser. Type an area instead.",true); return;}
+  status("Getting your location...");
+  navigator.geolocation.getCurrentPosition(pos=>{
+    state.geo={lat:pos.coords.latitude,lng:pos.coords.longitude};
+    $("#area").value="My location";
+    status("Location set. Choose a radius and scan.");
+  },()=>status("Couldn't get your location. Allow location access or type an area instead.",true),{timeout:15000});
+});
+$("#tab-results").addEventListener("click",()=>{state.view="results"; render(true);});
+$("#tab-shortlist").addEventListener("click",()=>{state.view="shortlist"; render(true);});
+$("#export").addEventListener("click",()=>{
+  const items=visible();
+  if(state.view==="results"){
+    const rows=items.map((p,i)=>({rank:i+1,score:p.score,name:p.name,category:p.category,address:p.address,
+      weekly_hours:p.hours==null?"":Math.round(p.hours),busy_sites_500m:p.busy,competitors_150m:p.rivals,
+      website:p.website,phone:p.phone,lat:p.lat,lng:p.lng,note:p.note}));
+    download("vending-results.csv",toCSV(rows,["rank","score","name","category","address","weekly_hours","busy_sites_500m","competitors_150m","website","phone","lat","lng","note"]));
+  }else{
+    const rows=items.map(p=>({company:p.name,contact:"",email:"",type:p.type,website:p.website,phone:p.phone}));
+    download("contacts.csv",toCSV(rows,["company","contact","email","type","website","phone"]));
+  }
+});
+
+render(false);
+</script>
+</body>
+</html>
